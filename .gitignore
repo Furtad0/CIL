@@ -1,0 +1,6 @@
+.vscode
+*_pb2.py
+*.pyc
+*.o
+*.d
+tools/cildissector/cildissector/build/

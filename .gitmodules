@@ -1,0 +1,3 @@
+[submodule "tools/scoringtool/scoringparser/rapidjson"]
+	path = tools/scoringtool/scoringparser/rapidjson
+	url = https://github.com/Tencent/rapidjson

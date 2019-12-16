@@ -1,0 +1,17 @@
+descartes==1.1.0
+geopandas==0.5.0
+matplotlib==3.0.3
+mock>=2.0
+more-itertools==7.0.0
+numpy==1.16.4
+pandas==0.24.2
+pandas-datareader==0.7.0
+pipenv==2018.11.26
+protobuf==3.8.0
+pytest==5.0.1
+Rtree==0.8.3
+# note that rtree needs libspatialindex so run
+# sudo apt-get install -y libspatialindex-dev
+seaborn==0.9.0
+shapely==1.6.4.post2
+xarray==0.12.1

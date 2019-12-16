@@ -1,0 +1,6 @@
+/dist/
+/*.egg-info
+.eggs
+scoringtool/__pycache__
+scoringtool/scoring_parser
+scoringparser/src/scoring_parser

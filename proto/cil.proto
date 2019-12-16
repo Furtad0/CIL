@@ -1,0 +1,470 @@
+// MIT License
+//
+// Copyright (c) 2019 DARPA
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+// This file is a part of the CIRN Interaction Language.
+
+
+// uses V3.0 of the Protocol Buffer Specification
+syntax = "proto3";
+package sc2.cil;
+
+// We wrap individual optional scalars values
+import "google/protobuf/wrappers.proto";
+
+//=================================================================================================
+//
+// SC2 Phase 2 CIRN Interaction Language Specification Strawman
+//
+//=================================================================================================
+
+
+//=================================================================================================
+// DATA MODEL
+//=================================================================================================
+
+
+//=================================================================================================
+// The following section contains primitive types of the data model
+//=================================================================================================
+
+/// A Timestamp consists of the Unix epoch integer seconds and picoseconds
+// This assumes most people will talk about time in terms of real world time from NTP
+message TimeStamp
+{
+    int32 seconds = 1; /// seconds since 1970
+    int64 picoseconds = 2; /// fractional portion of the time, in picoseconds
+}
+
+/*
+ * Location in terms of latitude, longitude, and elevation.
+ */
+message Location
+{
+  double latitude = 1; // latitude in degrees
+  double longitude = 2; // longitude in degrees
+  double elevation = 3; // meters above sea level
+}
+
+/*
+ * A SpectrumVoxel is one rectangular extent defined in frequency and time
+ * with a duty cycle. The frequency range reports the start and end of the
+ * occupied bandwidth in absolute (not baseband) Hz where 99% of the signal 
+ * energy is located. For example, a 22 MHz wide 802.11g OFDM channel at
+ * 2412 MHz center frequency has an occupied bandwidth of 16.6 MHz, so we
+ * would have freq_start=2403.7e6 and freq_end=2420.3e6. The start and end
+ * times must be within 60 seconds from the current time. The optional duty 
+ * cycle is a number in the (0,1] range which represents the percentage of
+ * the elapsed time (between time start ad time end) when the spectrum was 
+ * used. For example, if the radio is transmitting for 10 milliseconds for 
+ * every 50 milliseconds, then the duty cycle is 0.2. However, if half of 
+ * the 10 milliseconds transmit slots are not used because of lack of 
+ * traffic, then your duty cycle drops to 0.1. The channel does not have to
+ * be occupied in a periodic or uniform way. For historic data the duty cycle
+ * can be an exact value, for future data it can be the expected value. If 
+ * the duty cycle is omitted, then it is assumed to be 1.
+ *
+ * If the channel is occupied with a known period, period_time should be
+ * set to the period in seconds. If period_time is omitted, it is assumed
+ * that the channel is not occupied in any periodic manner. For periodic
+ * signals, the slot_time may be set to the duration of the occupied slot
+ * in seconds. For example, for a TDMA scheme with a superblock duration of
+ * 2 seconds and a slot size of 200ms, period_time should be set to 2.0 and
+ * slot_time should be set to 0.2. The first slot being described should 
+ * begin at time_start, and the last slot being described should be fully
+ * enclosed by the time range. In the case of periodic signals, duty_cycle
+ * should represent the actual occupied usage, taking into account that 
+ * not all periodic slots may have been fully occupied. With the example
+ * above where the superblock duration is 2.0s and slot time is 0.2s, if
+ * the transmitter transmits a signal for all slots, the duty cycle should
+ * be set to 0.1. However, if the transmitter only transmits for half
+ * the slots, the duty cycle should be set to 0.05.
+ */
+message SpectrumVoxel
+{
+  double freq_start = 1; // mandatory, the start of frequency range in Hz
+  double freq_end = 2; // mandatory, the end of frequency range in Hz
+  TimeStamp time_start = 3; // mandatory, the start of the time window
+  TimeStamp time_end = 4; // optional, the end of the time window
+  google.protobuf.DoubleValue duty_cycle = 5; // optional, duty cycle
+  google.protobuf.DoubleValue period_time = 6; // optional, period in seconds
+  google.protobuf.DoubleValue slot_time = 7; // optional, slot duration in seconds
+}
+
+/*
+ * The NetworkType message advertises the type of node this is.
+ */
+message NetworkType
+{
+    enum Type
+    {
+      UNKNOWN = 0;
+      COMPETITOR = 1;
+      INCUMBENT_PASSIVE = 10;
+      INCUMBENT_DSRC = 11;
+      INCUMBENT_JAMMER = 12;
+      INCUMBENT_ACTIVE = 13;
+    }
+
+    Type network_type = 100;  // type of network
+}
+
+//=================================================================================================
+// The following section contains composite types of the data model
+//=================================================================================================
+
+/// Currently Empty
+
+
+
+//=================================================================================================
+// EXPRESSIONS
+//=================================================================================================
+
+/// Currently Empty
+
+
+
+//=================================================================================================
+// HELLO Protocol
+//=================================================================================================
+
+/*
+ * Each released CIL specification has a version defined as <major>.<minor>.<patch>. The <major>
+ * version corresponds to the tournament phase. The <minor> version corresponds to the next 
+ * upcoming scrimmage number, or previous scrimmage + 1 for the PE/SCE round. The <patch> version
+ * begins at zero and is incremented after each merge to the master branch, resetting to zero after
+ * each scrimmage event. The CIL version will be available as a tag on the master branch. The
+ * version sent over the wire must match the CIL specification version used, which, for scrimmage
+ * events, should be the newest available version.
+ */
+message CilVersion
+{
+  uint32 major = 1; // mandatory, <major> = tournament phase
+  uint32 minor = 2; // mandatory, <minor> = upcoming scrimmage, or previous scrimmage + 1
+  uint32 patch = 3; // mandatory, <patch> = monotonically increasing, reset after each scrimmage
+}
+
+/*
+ * A Hello message is the initial announcement of a connecting peer. This
+ * should be the first message sent after a new connection is created to
+ * another neighbor. Connections should be created and the Hello messages
+ * should be sent within 10 seconds to all neighbors in response to receiving
+ * the Inform message from the collaboration server, and to all new neighbors
+ * (and only new ones) in response to the Notify message. Hello should be sent
+ * as the first message every time a peer needs to reconnect to its neighbors
+ * due to crashes or other disconnects. No other time should the CIRN send
+ * this  message. Note, that a Hello message may reset the msg_count field as
+ * desicrbed in CilMessage.
+ */
+message Hello
+{
+   CilVersion version = 2; // mandatory, the version of the CIL spoken and understood by the CIRN
+}
+
+//=================================================================================================
+// DETAILED_PERFORMANCE Protocol
+//=================================================================================================
+
+/*
+* Mandated outcomes are assigned to traffic streams that originate and
+* terminate at different nodes within a network. The radio ids list indicates
+* which radios play a part in delivering the mandate. The first in the list is
+* the originator of the traffic flow, and the last in the list is the
+* destination. The scalar performance is a non-negative value that indicates
+* how close the CIRN came to meeting the particular mandate by the end of the
+* measurement period. A value less than 1.0 means that the mandate was not met
+* in the measurement period. The mandate must be met for the steady state hold
+* period in order to count as achieved. The achieved duration field counts the
+* number of consecutive measurement periods (1 second) for which the mandate
+* was met. This value must be zero if scalar performance is less than 1.0 and
+* must be positive if scalar performance is at least 1.0. The desired voxels is
+* an optional list of SpectrumVoxels that would improve the performance of the
+* mandate, if other teams reduced their usage of them.
+*/
+message MandatePerformance
+{
+  double scalar_performance = 1; // mandatory, the progress at measurement time
+  repeated uint32 radio_ids = 2; // mandatory, SRN numbers of radios in the traffic flow
+  repeated SpectrumVoxel desired_voxels = 3; // optional, the required voxels
+  uint32 flow_id = 4; // mandatory, the mandate flow id (destination port)
+  uint32 hold_period = 5; // mandatory, the length of the steady state period
+  uint32 achieved_duration = 6; // mandatory, number of periods it was met
+  uint32 point_value = 7; //mandatory, the point_value of the mandate flow
+}
+
+/*
+* The mandate_count field must indicate the total number of assigned mandates.
+* Assigned mandates are defined to as those listed in the mandated_outcomes.json
+* file created at the start of each match and updated at each stage. The timestamp indicates
+* the end of the measurement period (1 second) to which this performance message
+* belongs to. The timestamp must be in the past and within 10 seconds of the
+* current time. The mandates achived value must contain the number of mandates
+* whose achieved duration is greater than or equal to the hold period. The list
+* of mandates gives details about where in the network the mandates are
+* succeeding or failing, and it must contain one entry for each tracked flow.
+* The reported mandates should not contain stale information. This list may
+* contain fewer entries than the total mandate count if the network is
+* partitioned (so accurate statistics is not available), or there are mandates
+* that the CIRN cannot achieve or decided not to pursue. This message must be sent
+* at least once every 10 seconds, and at most once every 1 second.
+*
+* For the purposes of CIL reporting, each measurement period is defined as a
+* time period of 1 second, beginning and ending on a second boundary on the
+* system clock. This may differ from the official definition used for scoring.
+* The timestamp field must be aligned to this second boundary.
+*/
+message DetailedPerformance
+{
+  uint32 mandate_count = 1; // mandatory, total number of mandates assigned
+  TimeStamp timestamp = 3; // mandatory, the end of the measurement period
+  repeated MandatePerformance mandates = 4; // mandatory, all known mandates
+  uint32 mandates_achieved = 5; // mandatory, number of achieved mandates 
+  uint32 total_score_achieved = 6; // mandatory, sum of point_value for all achieved mandates
+  uint32 scoring_point_threshold = 7; // mandatory, the threshold value from environment.json
+}
+
+//=================================================================================================
+// SPECTRUM_USAGE Protocol
+//=================================================================================================
+
+/*
+ * The TransmitterInfo describes a specific transmission for a given
+ * spectrum voxel. The radio identifier must be set to its unique SRN number.
+ * The energy of the transmitted signal is measured in dBFS
+ * and adjusted by the SDR TX gain settings. For example, a baseband digital
+ * signal with 0.1 RMS transmitted with 25.0 dB TX gain would have 
+ * power_db=5. The duty cycle does not affect this value, so power is
+ * measured only during actual transmission. The mac_cca flag should be
+ * set to true if the transmitter is performing clear channel assessment
+ * on a packet (or small time slot) basis.
+ */
+message TransmitterInfo
+{
+  uint32 radio_id = 1; // mandatory, SRN number of transmitter
+  google.protobuf.DoubleValue power_db = 3; // mandatory, transmit power
+  bool mac_cca = 4; // optional, MAC performs clear channel assessment
+}
+
+/*
+ * The ReceiverInfo describes a reception characteristic of a signal with
+ * a given spectrum voxel. The radio identifier must be set to its unique 
+ * SRN number. The energy of the received signal is measured
+ * in dBFs adjusted by the SDR RX gain settings. For example, a received 
+ * baseband digital signal with 0.1 RMS received with 25.0 dB RX gain would
+ * have power_db=-45. The duty cycle does not affect this value, so power 
+ * is measured only during actual reception.
+ */
+message ReceiverInfo
+{
+  uint32 radio_id = 1; // mandatory, SRN number of receiver
+  google.protobuf.DoubleValue power_db = 3; // optional, receive power
+}
+
+/*
+ * The SpectrumVoxelUsage message describes a single spectrum voxel and how
+ * it is used within the radio network. Each SpectrumVoxelUsage message should
+ * be attributed to a single transmitter node and one or more receiver nodes
+ * in order to describe how it is used to transfer data throughout the 
+ * network. If the network reports received power levels, then it should
+ * consider reporting that for its own transmissions, so other networks can
+ * estimate the caused interference. The optional utility is a measure of how
+ * important this particular spectrum voxel is to the operation of the 
+ * network. This number must be positive and additive, meaning that two
+ * spectrum voxels with utilities 1.7 and 2.1 have the same utility as a single
+ * voxel with utility 3.9. Other than this, the meaning of the utility is 
+ * undefined. If the utility is not specified, then it defaults to 1.
+ * If the reported spectrum usage is based on actual measurements (the start
+ * and end times, the frequency, the duty cycle, the power levels, etc.), then 
+ * the measured_data field must be set to true. Otherwise the report is either
+ * just a prediction or plan that might not occur precisely (e.g. the duty 
+ * cycle, power levels might be different than indicated).
+ */
+message SpectrumVoxelUsage
+{
+  SpectrumVoxel spectrum_voxel = 1; // mandatory, the voxel we are describing
+  TransmitterInfo transmitter_info = 2; // mandatory, the transmitter
+  repeated ReceiverInfo receiver_info = 3; // mandatory, one or more receivers
+  google.protobuf.DoubleValue utility = 4; // optional, the utility
+  bool measured_data = 5; // mandatory, all data are based on measurements
+}
+
+/*
+ * The SpectrumUsage message contains complete spectrum information that a
+ * network is using. If a new  SpectrumUsage message is received, then it 
+ * completely invalidates all previous SpectrumUsage messages. This message 
+ * should be sent at least once per every 10.0 seconds, but not more often 
+ * than once per every second. The set of nodes and voxels within the network
+ * can change. The set of spectrum voxels can overlap, either because of
+ * different duty cycles or otherwise. This message can contain future
+ * (planned) and/or past spectrum voxel data, because it takes time to
+ * collect and share information and past information can be useful as well.
+ */
+message SpectrumUsage
+{
+  repeated SpectrumVoxelUsage voxels = 1;
+}
+
+//=================================================================================================
+// LOCATION_UPDATE Protocol
+//=================================================================================================
+
+/*
+ * The LocationInfo message identifies the location of the given radio
+ * node at the given time. All reported values should come from valid
+ * GPS measurements. The timestamp must be in the past and within 60 
+ * seconds of the current time.
+ */
+message LocationInfo
+{
+  uint32 radio_id = 1; // mandatory, SRN number of node
+  Location location = 2; // mandatory, location of the node
+  TimeStamp timestamp = 3; // mandatory, the time of measurement
+}
+
+/*
+ * The LocationUpdate message contains a set of LocationInfo messages.
+ * The same radio_id can appear multiple times within the same LocationUpdate
+ * with different time stamps. If this message is sent, then it should
+ * be sent at least once per 30 seconds but no more often than once 
+ * per second.
+ */
+message LocationUpdate
+{
+  repeated LocationInfo locations = 1;
+}
+
+//=================================================================================================
+// INCUMBENT Protocol
+//=================================================================================================
+
+/*
+ * The IncumbentPassiveInfo notifies the user of the current power measurement (in dBFS). Power is
+ * measured using 10*log10(I^2 + Q^2) over the range center_freq +/- bandwidth/2. If the power
+ * measurement is greater-than-or-equal to the current threshold setting, the 'warning' flag is
+ * set to true which notifies the user the threshold has been breached.
+ *
+ * When 'msg_type' is "REPORT", then 'power' is the average power measurement across 10 previous
+ * measurements. For example, if messagePeriod is 0.5 (polled every 2 Hz), then each 'power'
+ * measurement is the average of 10 historical measurements 0.05 (polled every 20 Hz).
+ *
+ * When 'msg_type' is "VIOLATION", then 'power' is the average of N 'report' power measurements,
+ * where N is violationPeriod / messagePeriod (these are incumbent settings specified in
+ * radio.conf). For example, if violationPeriod is 2.0 and messagePeriod is 0.1, then 'power' is the
+ * average of the previous 20 'report' power measurements.
+ */
+ message IncumbentPassiveInfo
+ {
+    enum MessageType
+    {
+      UNKNOWN = 0;
+      REPORT = 10;
+      VIOLATION = 11;
+    }
+
+   int32 incumbent_id = 1;       // incumbent identifier
+   MessageType msg_type = 2;     // incumbent message type
+
+   TimeStamp report_time = 3;    // timestamp of when this measurement was made
+
+   double power = 4;             // see description
+   double threshold = 5;         // current threshold setting (dBFS)
+
+   int64 center_freq = 6;        // tuned center frequency (Hz)
+   int64 bandwidth = 7;          // tuned bandwidth (Hz)
+
+   bool threshold_exceeded = 8;  // was the threshold breached?
+ }
+
+/*
+ * The IncumbentActiveInfo notifies the competitor of its current interference ratio (INR); as a 
+ * function of measured power (during incumbent transmissions) and receiver noise floor. If measured
+ * INR is greater than the threshold, then a violation is tripped.
+ *
+ */
+ message IncumbentActiveInfo
+ {
+    enum MessageType
+    {
+      UNKNOWN = 0;
+      REPORT = 10;
+      VIOLATION = 11;
+    }
+
+   int32 incumbent_id = 1;       // incumbent identifier
+   MessageType msg_type = 2;     // incumbent message type
+
+   TimeStamp report_time = 3;    // timestamp of when this measurement was made
+
+   double inr = 4;             // see description
+   double threshold = 5;         // current threshold setting (dB)
+
+   int64 center_freq = 6;        // tuned center frequency (Hz)
+   int64 bandwidth = 7;          // tuned bandwidth (Hz)
+
+   bool threshold_exceeded = 8;  // was the threshold breached?
+ }
+
+ /*
+  * Top-level wrapper for Incumbent messages
+  */
+ message IncumbentNotify
+ {
+   oneof payload
+   {
+     IncumbentPassiveInfo data = 1;
+     IncumbentActiveInfo data_active = 2;
+   }
+ }
+
+//=================================================================================================
+// Top level wrapper message
+//=================================================================================================
+
+/*
+ * The CilMessage type is a simple wrapper that provides the headers
+ * supporting protocol checking, and allows users to determine the type of
+ * message they just received. Every message to be sent to another network
+ * must be encapsulated in an CilMessage structure. The msg_count field must
+ * be unique (per sender) and monotonically increasing (per sender) since the
+ * last Hello message (sent by the sender) to trace requests/responses. The
+ * time stamp should contain the time just before the message was sent.
+ */
+message CilMessage
+{
+  uint32 sender_network_id = 1;     // mandatory, IPv4 address of the col0 interface
+  uint32 msg_count = 2;             // mandatory, unique and monotonically increasing id
+  TimeStamp timestamp = 3;          // mandatory, time when message was sent
+  NetworkType network_type = 4;     // optional, network type identifier
+
+  oneof payload
+  {
+    Hello hello = 10;
+    SpectrumUsage spectrum_usage = 12;
+    LocationUpdate location_update = 13;
+    DetailedPerformance detailed_performance = 30;
+
+    /// See IncumbentNotify documentation. Expect this to be deprecated and moved to
+    // registration.proto in the future
+    IncumbentNotify incumbent_notify = 200;
+  }
+}
+
